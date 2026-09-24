@@ -15,6 +15,12 @@ function cian_core_module_post_types(): void {
 function cian_core_register_post_types(): void {
 
 	$types = array(
+		'client_work' => array(
+			'labels'   => cian_core_cpt_labels( 'Client Project', 'Client Work' ),
+			'slug'     => 'work',
+			'icon'     => 'dashicons-businessman',
+			'supports' => array( 'title', 'editor', 'excerpt', 'thumbnail', 'revisions', 'custom-fields', 'page-attributes' ),
+		),
 		'project' => array(
 			'labels'   => cian_core_cpt_labels( 'Project', 'Projects' ),
 			'slug'     => 'projects',

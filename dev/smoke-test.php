@@ -24,12 +24,28 @@ function ok( string $label, bool $cond ): void {
 $GLOBALS['__hooks']       = array();
 $GLOBALS['__post_types']  = array();
 $GLOBALS['__taxonomies']  = array();
+$GLOBALS['__registered_meta'] = array();
+$GLOBALS['__post_meta'] = array();
 $GLOBALS['__rest_routes'] = array();
+$GLOBALS['__http_requests'] = array();
+$GLOBALS['__http_response'] = null;
+$GLOBALS['__inserted_posts'] = array();
+$GLOBALS['__object_terms'] = array();
 
 function add_action( $hook, $cb, $prio = 10, $args = 1 ) { $GLOBALS['__hooks'][ $hook ][] = $cb; }
 function add_filter( $hook, $cb, $prio = 10, $args = 1 ) { $GLOBALS['__hooks'][ $hook ][] = $cb; }
+function apply_filters( $hook, $value ) { foreach ( $GLOBALS['__hooks'][ $hook ] ?? array() as $cb ) { $value = call_user_func( $cb, $value ); } return $value; }
 function register_post_type( $type, $args = array() ) { $GLOBALS['__post_types'][ $type ] = $args; }
 function register_taxonomy( $tax, $types, $args = array() ) { $GLOBALS['__taxonomies'][ $tax ] = $types; }
+function register_post_meta( $type, $key, $args = array() ) { $GLOBALS['__registered_meta'][ $type ][ $key ] = $args; }
+function get_post_meta( $post_id, $key = '', $single = false ) { return $GLOBALS['__post_meta'][ $post_id ][ $key ] ?? ( $single ? '' : array() ); }
+function get_posts( $args = array() ) { foreach ( $GLOBALS['__post_meta'] as $id => $meta ) { if ( ( $meta[ $args['meta_key'] ?? '' ] ?? null ) == ( $args['meta_value'] ?? null ) ) { return array( (int) $id ); } } return array(); }
+function wp_remote_get( $url, $args = array() ) { $GLOBALS['__http_requests'][] = array( 'url' => $url, 'args' => $args ); return $GLOBALS['__http_response']; }
+function wp_remote_retrieve_response_code( $response ) { return $response['response']['code'] ?? 0; }
+function wp_remote_retrieve_body( $response ) { return $response['body'] ?? ''; }
+function is_wp_error( $thing ) { return $thing instanceof WP_Error; }
+function wp_insert_post( $postarr, $wp_error = false ) { $id = count( $GLOBALS['__inserted_posts'] ) + 100; $GLOBALS['__inserted_posts'][ $id ] = $postarr; $GLOBALS['__post_meta'][ $id ] = $postarr['meta_input'] ?? array(); return $id; }
+function wp_set_object_terms( $object_id, $terms, $taxonomy, $append = false ) { $GLOBALS['__object_terms'][ $object_id ][ $taxonomy ] = $terms; return array(); }
 function register_rest_route( $ns, $route, $args = array() ) { $GLOBALS['__rest_routes'][] = $ns . $route; }
 function register_activation_hook( $f, $cb ) {}
 function register_deactivation_hook( $f, $cb ) {}
@@ -73,6 +89,7 @@ if ( ! defined( 'HOUR_IN_SECONDS' ) ) { define( 'HOUR_IN_SECONDS', 3600 ); }
 if ( ! defined( 'DAY_IN_SECONDS' ) ) { define( 'DAY_IN_SECONDS', 86400 ); }
 
 class WP_REST_Server { const READABLE = 'GET'; }
+class WP_Error { private $message; public function __construct( $code = '', $message = '' ) { $this->message = $message; } public function get_error_message() { return $this->message; } }
 
 // ---- Load the plugin --------------------------------------------------------
 $plugin = dirname( __DIR__ ) . '/cian-portfolio-core/cian-portfolio-core.php';
@@ -84,11 +101,13 @@ ok( 'Cian_Core class defined', class_exists( 'Cian_Core' ) );
 // Boot the module registry (requires every includes/ file + calls each bootstrap).
 Cian_Core::boot();
 ok( 'Cian_Core::boot() ran without fatal', true );
+ok( 'GitHub import does not run during plugin boot', 0 === count( $GLOBALS['__http_requests'] ) );
+ok( 'GitHub importer allowlist is empty until configured', array() === cian_core_github_import_allowlist() );
 
 // Fire init → registers post types + taxonomies.
 foreach ( $GLOBALS['__hooks']['init'] ?? array() as $cb ) { call_user_func( $cb ); }
 
-$expected_types = array( 'project', 'guide', 'article', 'review', 'video', 'tutorial_series', 'timeline_entry' );
+$expected_types = array( 'project', 'client_work', 'guide', 'article', 'review', 'video', 'tutorial_series', 'timeline_entry' );
 foreach ( $expected_types as $t ) {
 	ok( "post type registered: $t", isset( $GLOBALS['__post_types'][ $t ] ) );
 }
@@ -98,6 +117,11 @@ $expected_tax = array( 'project_category', 'project_status', 'guide_category', '
 foreach ( $expected_tax as $t ) {
 	ok( "taxonomy registered: $t", isset( $GLOBALS['__taxonomies'][ $t ] ) );
 }
+ok( 'technology taxonomy includes client_work', in_array( 'client_work', $GLOBALS['__taxonomies']['technology'] ?? array(), true ) );
+ok( 'project_category taxonomy includes client_work', in_array( 'client_work', $GLOBALS['__taxonomies']['project_category'] ?? array(), true ) );
+ok( 'project_status taxonomy includes client_work', in_array( 'client_work', $GLOBALS['__taxonomies']['project_status'] ?? array(), true ) );
+ok( 'client_work canonical meta is registered for REST', isset( $GLOBALS['__registered_meta']['client_work']['client_work_client']['show_in_rest'] ) && true === $GLOBALS['__registered_meta']['client_work']['client_work_client']['show_in_rest'] );
+ok( 'client_work live URL uses URL sanitizer', ( $GLOBALS['__registered_meta']['client_work']['client_work_live_url']['sanitize_callback'] ?? '' ) === 'esc_url_raw' );
 
 // Fire rest_api_init → registers cian/v1 routes.
 foreach ( $GLOBALS['__hooks']['rest_api_init'] ?? array() as $cb ) { call_user_func( $cb ); }
@@ -106,6 +130,39 @@ ok( 'REST transcript route registered', (bool) preg_grep( '#cian/v1/videos#', $G
 
 // ---- Pure-function unit tests ----------------------------------------------
 echo "\n-- parsers --\n";
+
+$GLOBALS['__post_meta'][42] = array(
+	'client_work_client'   => 'Canonical Client',
+	'client_work_status'   => 'Complete',
+	'client_work_services' => 'Strategy, design',
+	'client_work_year'     => '2025',
+	'client_work_live_url' => 'https://canonical.example',
+	'dd_client'            => 'Legacy Client',
+	'dd_status'            => 'Live',
+	'dd_services'          => 'Legacy services',
+	'dd_year'              => '2024',
+	'dd_live_url'          => 'https://legacy.example',
+);
+$client_work = cian_core_client_work_data( 42 );
+ok( 'client_work adapter returns stable keys and prefers canonical values', array_keys( $client_work ) === array( 'client', 'status', 'services', 'year', 'live_url' ) && ( $client_work['client'] ?? '' ) === 'Canonical Client' && ( $client_work['live_url'] ?? '' ) === 'https://canonical.example' );
+$GLOBALS['__post_meta'][43] = array( 'dd_client' => 'Legacy Client', 'dd_status' => 'Live', 'dd_services' => 'Legacy services', 'dd_year' => '2024', 'dd_live_url' => 'https://legacy.example' );
+$legacy_client_work = cian_core_client_work_data( 43 );
+ok( 'client_work adapter reads legacy dd_* fallback values', ( $legacy_client_work['client'] ?? '' ) === 'Legacy Client' && ( $legacy_client_work['live_url'] ?? '' ) === 'https://legacy.example' );
+
+$GLOBALS['__hooks']['cian_core_github_import_owner'][] = static fn ( $owner ) => 'example-owner';
+$GLOBALS['__hooks']['cian_core_github_import_allowlist'][] = static fn ( $repos ) => array( 'public-repo' );
+ok( 'GitHub importer rejects repos outside explicit allowlist before network access', is_wp_error( cian_core_github_import_project( 'not-allowed' ) ) && count( $GLOBALS['__http_requests'] ) === 0 );
+$repo_metadata = array( 'id' => 9001, 'name' => 'public-repo', 'owner' => array( 'login' => 'example-owner' ), 'private' => false, 'description' => 'Imported summary', 'html_url' => 'https://github.com/example-owner/public-repo', 'homepage' => 'https://example.test', 'created_at' => '2024-05-01T00:00:00Z', 'pushed_at' => gmdate( 'c' ), 'size' => 24, 'language' => 'PHP', 'topics' => array( 'wordpress', 'portfolio' ) );
+$GLOBALS['__http_response'] = array( 'response' => array( 'code' => 200 ), 'body' => json_encode( array_merge( $repo_metadata, array( 'private' => true ) ) ) );
+ok( 'GitHub importer rejects a private repository without creating a post', is_wp_error( cian_core_github_import_project( 'public-repo' ) ) && count( $GLOBALS['__inserted_posts'] ) === 0 );
+$GLOBALS['__http_response']['body'] = json_encode( $repo_metadata );
+$imported_id = cian_core_github_import_project( 'public-repo' );
+ok( 'GitHub importer creates one public repository as a draft', 100 === $imported_id && ( $GLOBALS['__inserted_posts'][100]['post_status'] ?? '' ) === 'draft' );
+ok( 'GitHub importer maps metadata to canonical project fields', ( $GLOBALS['__post_meta'][100]['project_github_url'] ?? '' ) === 'https://github.com/example-owner/public-repo' && ( $GLOBALS['__post_meta'][100]['project_summary'] ?? '' ) === 'Imported summary' && ( $GLOBALS['__post_meta'][100]['project_year'] ?? '' ) === '2024' );
+ok( 'GitHub importer assigns canonical status and technology taxonomies', ( $GLOBALS['__object_terms'][100]['project_status'] ?? '' ) === 'In Progress' && ( $GLOBALS['__object_terms'][100]['technology'] ?? array() ) === array( 'PHP', 'wordpress', 'portfolio' ) );
+ok( 'GitHub importer requests only repository metadata, never README contents', count( $GLOBALS['__http_requests'] ) === 2 && ! preg_match( '#/readme(?:$|[?/])#i', implode( ' ', array_column( $GLOBALS['__http_requests'], 'url' ) ) ) );
+$duplicate_id = cian_core_github_import_project( 'public-repo' );
+ok( 'GitHub importer leaves an existing matching project unchanged', 100 === $duplicate_id && 1 === count( $GLOBALS['__inserted_posts'] ) );
 
 $vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nHello <b>world</b>\n\n00:00:04.000 --> 00:00:06.000\nSecond line\n";
 $seg = cian_core_parse_vtt( $vtt );
