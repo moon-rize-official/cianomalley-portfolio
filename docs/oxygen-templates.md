@@ -48,6 +48,7 @@ Build in this order. Each row: the Oxygen **template condition** and the **key c
 | 7 | Review archive | Archive → Review | filter bar (category/recommended/score), Repeater → cards |
 | 8 | Project single | Singular → Project | hero (role/year/status + GitHub/Live/Docs links via dynamic data), case-study sections (Problem → Future improvements, dynamic data — skip empty), screenshot gallery, video gallery `[cian_video_facade]`, `[cian_related]` |
 | 9 | Project archive | Archive → Project | filter bar (category/status/technology/year), Repeater → cards, featured first |
+| 9a | Client Work single / archive | Singular / Archive → Client Work | render case-study details through `cian_core_client_work_data( $post_id )`; archive filters use the shared `technology`, `project_category`, and `project_status` taxonomies |
 | 10 | Article single / archive | Singular / Archive → Article | reading-optimized single; chronological cards archive |
 | 11 | Series single | Singular → Tutorial Series | cover/summary/difficulty/outcomes, ordered lessons Repeater (each row: video + guide links, `[cian_card]`), "Continue at lesson N" (localStorage) |
 | 12 | Home / Arrival | Front page | identity hero (H1 + positioning + tech strip, all real HTML), world mount `<div id="district-root">`, then the fallback sections beneath (featured projects, latest guide + video, entry links, contact CTA) |
@@ -60,6 +61,16 @@ Build in this order. Each row: the Oxygen **template condition** and the **key c
 - Reading templates (Guide/Article single) must **not** enqueue the world — the plugin already gates this; just don't add the `#district-root` mount there.
 - Breakpoints: 480 / 768 / 1024 / 1366 / 1920; cap content at 1200px (reading at 70ch). Gate hover styles behind `@media (hover:hover)`.
 - Adopt Breakdance Elements for Oxygen elements (accordion/tabs/slider) only after an a11y check; record results in `docs/decisions/`.
+
+## Client Work data contract
+
+The plugin owns the `client_work` post type (public archive `/work/`) and attaches it to the shared `technology`, `project_category`, and `project_status` taxonomies. A frontend can call `cian_core_client_work_data( $post_id )` to get the stable `client`, `status`, `services`, `year`, and `live_url` string keys. Escape values for their output context.
+
+Canonical REST meta keys are `client_work_client`, `client_work_status`, `client_work_services`, `client_work_year`, and `client_work_live_url`. The adapter falls back to the Digital District theme's legacy `dd_client`, `dd_status`, `dd_services`, `dd_year`, and `dd_live_url` values so existing entries remain readable during migration. Oxygen remains the planned default template builder; this data contract also supports an optional theme frontend.
+
+## Manual GitHub project import
+
+The plugin offers `wp cian project import-github <repository>` for a deliberate, one-repository import. Set `CIAN_GITHUB_IMPORT_OWNER` and `CIAN_GITHUB_IMPORT_ALLOWLIST` in `wp-config.php` before using it, for example `define( 'CIAN_GITHUB_IMPORT_OWNER', 'cian-omalley' );` and `define( 'CIAN_GITHUB_IMPORT_ALLOWLIST', array( 'repo-name' ) );`. The allowlist is empty by default. The importer requests only that repository's public metadata endpoint, refuses private or mismatched responses, skips existing imports, and creates new items as drafts. It does not list an account's repositories, fetch README or source contents, run on theme/plugin activation, or schedule a sync. Review the draft and publish it manually when ready.
 
 ## Verifying a template
 

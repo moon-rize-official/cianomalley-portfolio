@@ -17,13 +17,13 @@ function cian_core_register_taxonomies(): void {
 
 	$taxonomies = array(
 		'project_category' => array(
-			'types'        => array( 'project' ),
+			'types'        => array( 'project', 'client_work' ),
 			'label'        => 'Project Categories',
 			'hierarchical' => true,
 			'slug'         => 'projects/category',
 		),
 		'project_status' => array(
-			'types'        => array( 'project' ),
+			'types'        => array( 'project', 'client_work' ),
 			'label'        => 'Project Status',
 			'hierarchical' => false,
 			'slug'         => 'projects/status',
@@ -65,7 +65,7 @@ function cian_core_register_taxonomies(): void {
 			'slug'         => 'articles/category',
 		),
 		'technology' => array(
-			'types'        => array( 'project', 'guide', 'article', 'video', 'review' ),
+			'types'        => array( 'project', 'client_work', 'guide', 'article', 'video', 'review' ),
 			'label'        => 'Technologies',
 			'hierarchical' => false,
 			'slug'         => 'tech',

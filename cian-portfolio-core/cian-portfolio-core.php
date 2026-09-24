@@ -33,6 +33,8 @@ final class Cian_Core {
 	private const MODULES = array(
 		'post_types'      => 'post-types.php',
 		'taxonomies'      => 'taxonomies.php',
+		'client_work'     => 'client-work.php',
+		'github_import'  => 'github-import.php',
 		'acf_fields'      => 'acf-fields.php',
 		'relationships'   => 'relationships.php',
 		'assets'          => 'assets.php',
@@ -65,6 +67,7 @@ final class Cian_Core {
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			require_once CIAN_CORE_DIR . 'cli/youtube-sync-command.php';
+			require_once CIAN_CORE_DIR . 'cli/github-import-command.php';
 		}
 	}
 

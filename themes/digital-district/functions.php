@@ -1,0 +1,74 @@
+<?php
+/**
+ * Digital District theme setup.
+ *
+ * The Cian Portfolio Core plugin is the sole owner of portfolio content types,
+ * fields, sync, and data rules. This optional theme owns presentation only.
+ *
+ * @package DigitalDistrict
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+define( 'DD_VERSION', '1.1.0' );
+
+if ( ! function_exists( 'dd_setup' ) ) {
+	function dd_setup() {
+		load_theme_textdomain( 'digital-district', get_template_directory() . '/languages' );
+		add_theme_support( 'title-tag' );
+		add_theme_support( 'automatic-feed-links' );
+		add_theme_support( 'post-thumbnails' );
+		add_theme_support( 'responsive-embeds' );
+		add_theme_support( 'align-wide' );
+		add_theme_support( 'custom-logo', array( 'height' => 48, 'width' => 48, 'flex-height' => true, 'flex-width' => true ) );
+		add_theme_support( 'html5', array( 'search-form', 'comment-form', 'comment-list', 'gallery', 'caption', 'style', 'script' ) );
+		add_image_size( 'dd_card', 900, 560, true );
+		add_image_size( 'dd_cover', 1600, 900, true );
+		register_nav_menus( array( 'primary' => __( 'Primary Menu', 'digital-district' ) ) );
+	}
+}
+add_action( 'after_setup_theme', 'dd_setup' );
+
+function dd_assets() {
+	$dir = get_template_directory_uri();
+	wp_enqueue_style( 'dd-fonts', $dir . '/assets/css/fonts.css', array(), DD_VERSION );
+	wp_enqueue_style( 'dd-tokens', $dir . '/assets/css/tokens.css', array(), DD_VERSION );
+	wp_enqueue_style( 'dd-main', $dir . '/assets/css/main.css', array( 'dd-tokens' ), DD_VERSION );
+	wp_enqueue_style( 'dd-style', get_stylesheet_uri(), array( 'dd-main' ), DD_VERSION );
+	wp_enqueue_script( 'dd-main', $dir . '/assets/js/main.js', array(), DD_VERSION, true );
+	if ( is_singular() && comments_open() && get_option( 'thread_comments' ) ) {
+		wp_enqueue_script( 'comment-reply' );
+	}
+}
+add_action( 'wp_enqueue_scripts', 'dd_assets' );
+
+function dd_html_no_js() {
+	echo '<script>document.documentElement.classList.add("no-js");</script>' . "\n";
+}
+add_action( 'wp_head', 'dd_html_no_js', 1 );
+
+function dd_body_classes( $classes ) {
+	if ( ! is_active_sidebar( 'primary' ) ) {
+		$classes[] = 'dd-theme';
+	}
+	return $classes;
+}
+add_filter( 'body_class', 'dd_body_classes' );
+
+require get_template_directory() . '/inc/post-types.php';
+require get_template_directory() . '/inc/template-tags.php';
+require get_template_directory() . '/inc/contact.php';
+require get_template_directory() . '/inc/setup-content.php';
+require get_template_directory() . '/inc/maintenance.php';
+
+function dd_core_plugin_ready() {
+	return function_exists( 'cian_core_register_post_types' ) && post_type_exists( 'project' ) && taxonomy_exists( 'technology' );
+}
+
+function dd_core_plugin_notice() {
+	if ( dd_core_plugin_ready() || ! current_user_can( 'activate_plugins' ) ) {
+		return;
+	}
+	printf( '<div class="notice notice-error"><p>%s</p></div>', esc_html__( 'Digital District requires the Cian Portfolio Core plugin. Activate it to register the shared portfolio content model.', 'digital-district' ) );
+}
+add_action( 'admin_notices', 'dd_core_plugin_notice' );
